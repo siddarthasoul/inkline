@@ -5,6 +5,7 @@ import {
 } from '../repositories/article.repository.js';
 import type { ArticleStatus } from '../models/Article.js';
 import { ApiError } from '../utils/ApiError.js';
+import { articleLikeRepository } from '../repositories/article-like.repository.js';
 
 function createSlug(title: string): string {
   const slug = title
@@ -90,7 +91,8 @@ export class ArticleService {
   }
 
   async getPublishedArticle(slug: string) {
-    const article = await articleRepository.findPublishedBySlug(slug);
+    const article =
+      await articleRepository.incrementPublishedViewBySlug(slug);
 
     if (!article) {
       throw new ApiError(404, 'Article not found');
@@ -107,14 +109,25 @@ export class ArticleService {
   ) {
     this.checkOwnerId(ownerId);
 
-
-    return articleRepository.listForOwner({
+    const result = await articleRepository.listForOwner({
       page,
       limit,
       author: new Types.ObjectId(ownerId),
       ...(status !== undefined ? { status } : {}),
     });
 
+    const likeCounts = await articleLikeRepository.countByArticles(
+      result.items.map((article) => article._id),
+    );
+
+    return {
+      ...result,
+      items: result.items.map((article) => ({
+        ...article,
+        views: article.views ?? 0,
+        likes: likeCounts.get(article._id.toString()) ?? 0,
+      })),
+    };
   }
 
   async getOwnerArticle(ownerId: string, articleId: string) {

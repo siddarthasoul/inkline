@@ -9,6 +9,8 @@ export interface Article {
   excerpt?: string;
   content: string;
   status: ArticleStatus;
+  views: number;
+  likes: number;
   author: string;
   publishedAt: string | null;
   createdAt: string;

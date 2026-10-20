@@ -15,6 +15,7 @@ export interface IArticle {
   status: ArticleStatus;
   author: Types.ObjectId;
   publishedAt: Date | null;
+  views: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -65,6 +66,12 @@ const articleSchema = new Schema<IArticle>(
     publishedAt: {
       type: Date,
       default: null,
+    },
+    views: {
+      type: Number,
+      default: 0,
+      min: 0,
+      required: true,
     },
   },
   {

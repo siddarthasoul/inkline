@@ -61,6 +61,36 @@ export class ArticleLikeRepository {
       visitor,
     }).exec();
   }
+
+  async countByArticles(
+    articleIds: Types.ObjectId[],
+  ): Promise<Map<string, number>> {
+    if (articleIds.length === 0) {
+      return new Map<string, number>();
+    }
+
+    const counts = await ArticleLike.aggregate<{
+      _id: Types.ObjectId;
+      count: number;
+    }>([
+      {
+        $match: {
+          article: { $in: articleIds },
+        },
+      },
+      {
+        $group: {
+          _id: '$article',
+          count: { $sum: 1 },
+        },
+      },
+    ]).exec();
+
+    return new Map(
+      counts.map(({ _id, count }) => [_id.toString(), count]),
+    );
+  }
+
 }
 
 export const articleLikeRepository = new ArticleLikeRepository();

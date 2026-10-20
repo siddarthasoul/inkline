@@ -206,6 +206,12 @@ export default function DashboardPage() {
                       ? ` · Published ${formatDate(article.publishedAt)}`
                       : ""}
                   </p>
+
+                  <div className="dashboard-article-stats">
+                    <span>◉ {article.views ?? 0} views</span>
+                    <span>♥ {article.likes ?? 0} likes</span>
+                  </div>
+
                 </div>
                 <div className="dashboard-article-actions">
                   <Link href={`/dashboard/edit/${article._id}`}>Edit</Link>

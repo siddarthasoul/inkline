@@ -120,6 +120,22 @@ export class ArticleRepository {
     };
   }
 
+  async incrementPublishedViewBySlug(slug: string) {
+    return Article.findOneAndUpdate(
+      {
+        slug: slug.trim().toLowerCase(),
+        status: 'published',
+      },
+      {
+        $inc: { views: 1 },
+      },
+      {
+        new: true,
+        runValidators: true,
+      },
+    ).exec();
+  }
+
   async updateById(id: string, updates: UpdateArticleInput) {
     return Article.findByIdAndUpdate(id, updates, {
       new: true,

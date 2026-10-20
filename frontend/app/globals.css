@@ -1,13 +1,27 @@
 @import "tailwindcss";
 
+
 :root {
+  color-scheme: light;
   --background: #f8f7f3;
   --foreground: #242720;
   --muted: #77796f;
   --line: #e5e3da;
   --accent: #b9ef76;
+  --surface: #ffffff;
   --font-editorial: Georgia, "Times New Roman", serif;
 }
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #151713;
+  --foreground: #eeeee7;
+  --muted: #a3a597;
+  --line: #34372f;
+  --accent: #b9ef76;
+  --surface: #20231d;
+}
+
 
 @theme inline {
   --color-background: var(--background);
@@ -1608,4 +1622,57 @@ a:focus-visible {
   height: 32px;
   flex-shrink: 0;
   object-fit: contain;
+}
+
+
+
+/* Theme toggle */
+
+.theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--foreground);
+  cursor: pointer;
+  font-size: 17px;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.theme-toggle:hover {
+  transform: translateY(-1px);
+  border-color: var(--muted);
+}
+
+.theme-toggle:focus-visible {
+  outline: 3px solid #7ca34a;
+  outline-offset: 3px;
+}
+
+/* Shared surfaces follow the selected theme */
+
+.site-header,
+.article-card,
+.nav-owner-link {
+  background-color: var(--background);
+  color: var(--foreground);
+  border-color: var(--line);
+}
+
+:root[data-theme="dark"] body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+:root[data-theme="dark"] .hero-description,
+:root[data-theme="dark"] .section-note,
+:root[data-theme="dark"] .hero-rule {
+  color: var(--muted);
 }
