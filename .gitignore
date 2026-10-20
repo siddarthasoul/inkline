@@ -1,0 +1,33 @@
+# Dependencies
+**/node_modules/
+
+# Build output
+**/.next/
+**/out/
+**/dist/
+**/build/
+**/coverage/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local tools and editor files
+**/.vercel/
+**/.turbo/
+.DS_Store
+.vscode/
+.idea/
+*.tsbuildinfo
+
+# Local backups
+*.backup
+*.bak
