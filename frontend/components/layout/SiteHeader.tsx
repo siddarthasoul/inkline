@@ -5,7 +5,7 @@ export function SiteHeader() {
     <header className="site-header">
       <div className="container header-inner">
         <Link href="/" className="brand" aria-label="Inkline home">
-          <span className="brand-mark">i.</span>
+          <img src="/inkline-mark.svg" alt="" className="brand-logo" width="32" height="32" />
           <span>inkline</span>
         </Link>
 
