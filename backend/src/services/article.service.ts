@@ -1,3 +1,4 @@
+
 import { Types } from 'mongoose';
 import {
   articleRepository,
@@ -6,6 +7,7 @@ import {
 import type { ArticleStatus } from '../models/Article.js';
 import { ApiError } from '../utils/ApiError.js';
 import { articleLikeRepository } from '../repositories/article-like.repository.js';
+import { cacheService, CacheTTL } from './cache.service.js';
 
 function createSlug(title: string): string {
   const slug = title
@@ -35,6 +37,20 @@ function isDuplicateKeyError(error: unknown): boolean {
 }
 
 export class ArticleService {
+  private async invalidateArticleCaches(...slugs: string[]): Promise<void> {
+    const uniqueSlugs = [...new Set(slugs.filter(Boolean))];
+
+    await Promise.all([
+      cacheService.invalidatePattern('articles:published:list:*'),
+      cacheService.invalidatePattern('articles:owner:list:*'),
+      ...uniqueSlugs.flatMap((slug) => [
+        cacheService.invalidate(`article:published:slug:${slug}`),
+        // ArticleLikeService also caches the published article lookup.
+        cacheService.invalidate(`article:likes:article:${slug}`),
+      ]),
+    ]);
+  }
+
   async create(
     ownerId: string,
     input: {
@@ -56,12 +72,8 @@ export class ArticleService {
     }
 
     if (await articleRepository.existsBySlug(slug)) {
-      throw new ApiError(
-        409,
-        'An article with this title already exists',
-      );
+      throw new ApiError(409, 'An article with this title already exists');
     }
-
 
     const articleData = {
       title,
@@ -75,21 +87,40 @@ export class ArticleService {
     };
 
     try {
-      return await articleRepository.create(articleData);
+      const article = await articleRepository.create(articleData);
+      await this.invalidateArticleCaches(slug);
+      return article;
     } catch (error) {
       if (isDuplicateKeyError(error)) {
         throw new ApiError(409, 'Article slug already exists');
       }
-
       throw error;
     }
-
   }
 
   async getPublishedArticles(page = 1, limit = 10) {
-    return articleRepository.listPublished({ page, limit });
+    const safePage = Math.max(1, Math.floor(page));
+    const safeLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+
+    const key =
+      `articles:published:list:page:${safePage}:limit:${safeLimit}`;
+
+    return cacheService.remember(
+      key,
+      CacheTTL.list,
+      () =>
+        articleRepository.listPublished({
+          page: safePage,
+          limit: safeLimit,
+        }),
+    );
   }
 
+  /**
+   * View counting is intentionally left unchanged here.
+   * This method currently increments MongoDB on every request.
+   * Visitor-based 24-hour deduplication will be wired separately.
+   */
   async getPublishedArticle(slug: string) {
     const article =
       await articleRepository.incrementPublishedViewBySlug(slug);
@@ -109,25 +140,34 @@ export class ArticleService {
   ) {
     this.checkOwnerId(ownerId);
 
-    const result = await articleRepository.listForOwner({
-      page,
-      limit,
-      author: new Types.ObjectId(ownerId),
-      ...(status !== undefined ? { status } : {}),
+    const safePage = Math.max(1, Math.floor(page));
+    const safeLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+    const statusKey = status ?? 'all';
+
+    const key =
+      `articles:owner:list:${ownerId}:page:${safePage}:limit:${safeLimit}:status:${statusKey}`;
+
+    return cacheService.remember(key, CacheTTL.short, async () => {
+      const result = await articleRepository.listForOwner({
+        page: safePage,
+        limit: safeLimit,
+        author: new Types.ObjectId(ownerId),
+        ...(status !== undefined ? { status } : {}),
+      });
+
+      const likeCounts = await articleLikeRepository.countByArticles(
+        result.items.map((article) => article._id),
+      );
+
+      return {
+        ...result,
+        items: result.items.map((article) => ({
+          ...article,
+          views: article.views ?? 0,
+          likes: likeCounts.get(article._id.toString()) ?? 0,
+        })),
+      };
     });
-
-    const likeCounts = await articleLikeRepository.countByArticles(
-      result.items.map((article) => article._id),
-    );
-
-    return {
-      ...result,
-      items: result.items.map((article) => ({
-        ...article,
-        views: article.views ?? 0,
-        likes: likeCounts.get(article._id.toString()) ?? 0,
-      })),
-    };
   }
 
   async getOwnerArticle(ownerId: string, articleId: string) {
@@ -159,10 +199,7 @@ export class ArticleService {
 
     this.validateContent(title, content);
 
-    const updates: UpdateArticleInput = {
-      title,
-      content,
-    };
+    const updates: UpdateArticleInput = { title, content };
 
     if (input.excerpt !== undefined) {
       updates.excerpt = input.excerpt.trim();
@@ -181,21 +218,18 @@ export class ArticleService {
     }
 
     try {
-      const updated = await articleRepository.updateById(
-        articleId,
-        updates,
-      );
+      const updated = await articleRepository.updateById(articleId, updates);
 
       if (!updated) {
         throw new ApiError(404, 'Article not found');
       }
 
+      await this.invalidateArticleCaches(article.slug, updated.slug);
       return updated;
     } catch (error) {
       if (isDuplicateKeyError(error)) {
         throw new ApiError(409, 'Article slug already exists');
       }
-
       throw error;
     }
   }
@@ -209,14 +243,14 @@ export class ArticleService {
   }
 
   async delete(ownerId: string, articleId: string) {
-    await this.getOwnerArticle(ownerId, articleId);
-
+    const article = await this.getOwnerArticle(ownerId, articleId);
     const deleted = await articleRepository.deleteById(articleId);
 
     if (!deleted) {
       throw new ApiError(404, 'Article not found');
     }
 
+    await this.invalidateArticleCaches(article.slug);
     return { id: articleId, deleted: true };
   }
 
@@ -225,7 +259,7 @@ export class ArticleService {
     articleId: string,
     status: ArticleStatus,
   ) {
-    await this.getOwnerArticle(ownerId, articleId);
+    const existing = await this.getOwnerArticle(ownerId, articleId);
 
     const article = await articleRepository.updateById(articleId, {
       status,
@@ -236,6 +270,7 @@ export class ArticleService {
       throw new ApiError(404, 'Article not found');
     }
 
+    await this.invalidateArticleCaches(existing.slug, article.slug);
     return article;
   }
 

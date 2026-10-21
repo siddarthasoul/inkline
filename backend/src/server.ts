@@ -2,9 +2,14 @@ import process from 'node:process';
 import app from './app.js';
 import env from './config/env.js';
 import mongoDatabase from './config/database.js';
+import {
+  connectRedis,
+  disconnectRedis,
+} from './config/redis.js';
 
 async function startServer(): Promise<void> {
   await mongoDatabase.connect();
+  await connectRedis();
 
   const server = app.listen(env.server.port, env.server.host, () => {
     console.log(
@@ -16,12 +21,15 @@ async function startServer(): Promise<void> {
     console.log('Shutting down server...');
 
     server.close(() => {
-      void mongoDatabase.disconnect()
+      void Promise.all([
+        mongoDatabase.disconnect(),
+        disconnectRedis(),
+      ])
         .then(() => {
-          console.log('Server and database disconnected');
+          console.log('Server, database, and Redis disconnected');
         })
         .catch((error: unknown) => {
-          console.error('Database shutdown failed:', error);
+          console.error('Shutdown failed:', error);
           process.exitCode = 1;
         });
     });

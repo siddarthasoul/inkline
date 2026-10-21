@@ -97,6 +97,11 @@ class Env {
         password: this.getString("OWNER_PASSWORD"),
     };
 
+    readonly redis = {
+        url: this.getString("REDIS_URL"),
+        cacheTtlSeconds: this.getNumber("CACHE_TTL_SECONDS", 60),
+    };
+
 
 }
 

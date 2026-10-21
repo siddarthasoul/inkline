@@ -1,5 +1,5 @@
-import { Types } from 'mongoose';
 
+import { Types } from 'mongoose';
 import ArticleLike from '../models/ArticleLike.js';
 
 function isDuplicateKeyError(error: unknown): boolean {
@@ -28,12 +28,16 @@ export class ArticleLikeRepository {
     return like !== null;
   }
 
+  /**
+   * Returns true only when a new like was inserted.
+   * Repeated likes do not increase the count.
+   */
   async like(
     articleId: Types.ObjectId,
     visitor: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
-      await ArticleLike.updateOne(
+      const result = await ArticleLike.updateOne(
         { article: articleId, visitor },
         {
           $setOnInsert: {
@@ -43,23 +47,31 @@ export class ArticleLikeRepository {
         },
         { upsert: true },
       ).exec();
+
+      return result.upsertedCount > 0;
     } catch (error) {
-      // Concurrent upserts can race. The unique index makes one insert win.
-      // E11000 is safe here: the desired like already exists.
-      if (!isDuplicateKeyError(error)) {
-        throw error;
+      // Another concurrent request may have inserted the same unique like.
+      if (isDuplicateKeyError(error)) {
+        return false;
       }
+
+      throw error;
     }
   }
 
+  /**
+   * Returns true only when an existing like was deleted.
+   */
   async unlike(
     articleId: Types.ObjectId,
     visitor: string,
-  ): Promise<void> {
-    await ArticleLike.deleteOne({
+  ): Promise<boolean> {
+    const result = await ArticleLike.deleteOne({
       article: articleId,
       visitor,
     }).exec();
+
+    return result.deletedCount > 0;
   }
 
   async countByArticles(
@@ -73,24 +85,14 @@ export class ArticleLikeRepository {
       _id: Types.ObjectId;
       count: number;
     }>([
-      {
-        $match: {
-          article: { $in: articleIds },
-        },
-      },
-      {
-        $group: {
-          _id: '$article',
-          count: { $sum: 1 },
-        },
-      },
+      { $match: { article: { $in: articleIds } } },
+      { $group: { _id: '$article', count: { $sum: 1 } } },
     ]).exec();
 
     return new Map(
       counts.map(({ _id, count }) => [_id.toString(), count]),
     );
   }
-
 }
 
 export const articleLikeRepository = new ArticleLikeRepository();
