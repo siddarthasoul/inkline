@@ -2,23 +2,29 @@
 import { redisRepository } from '../repositories/redis.repository.js';
 
 export const CacheTTL = {
-  short: 5 * 60,          // 5 minutes
-  list: 60 * 60,          // 1 hour
-  article: 24 * 60 * 60,  // 24 hours
-  week: 7 * 24 * 60 * 60, // 7 days
-  viewDedup: 24 * 60 * 60, // 24 hours
+  short: 5 * 60,
+  list: 60 * 60,
+  article: 24 * 60 * 60,
+  week: 7 * 24 * 60 * 60,
+  viewDedup: 24 * 60 * 60,
 } as const;
 
-export class CacheService {
+function safeCacheKey(key: string): string {
+  return key.replace(
+    /(article:likes:state:[^:]+:).+/,
+    '$1<redacted>',
+  );
+}
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
+export class CacheService {
   async get<T>(key: string): Promise<T | null> {
     try {
       const value = await redisRepository.get<T>(key);
-
-      // Avoid exposing visitor identifiers in logs.
-      const label = key.startsWith('article:likes:state:')
-        ? 'article:likes:state:<redacted>'
-        : key;
+      const label = safeCacheKey(key);
 
       console.info(
         value === null
@@ -28,12 +34,10 @@ export class CacheService {
 
       return value;
     } catch (error) {
-      console.error('[Cache ERROR] Read failed:', error);
+      console.error('[Cache ERROR] Read failed:', errorMessage(error));
       return null;
     }
   }
-
-
 
   async set<T>(
     key: string,
@@ -42,12 +46,14 @@ export class CacheService {
   ): Promise<void> {
     try {
       await redisRepository.set(key, value, ttlSeconds);
-      console.info(`[Cache SET] ${key} TTL=${ttlSeconds}s`);
+
+      console.info(
+        `[Cache SET] ${safeCacheKey(key)} TTL=${ttlSeconds}s`,
+      );
     } catch (error) {
-      console.error('[Cache ERROR] Write failed:', error);
+      console.error('[Cache ERROR] Write failed:', errorMessage(error));
     }
   }
-
 
   async remember<T>(
     key: string,
@@ -60,21 +66,12 @@ export class CacheService {
       return cached;
     }
 
-    // MongoDB/source remains authoritative on a cache miss.
     const value = await loadFromSource();
-
     await this.set(key, value, ttlSeconds);
 
     return value;
   }
 
-  /**
-   * Atomically mark a key once, for example a visitor's article view.
-   * Returns false if the key already exists.
-   *
-   * Returns null when Redis is unavailable, so callers can distinguish
-   * a cache failure from a duplicate marker.
-   */
   async markOnce(
     key: string,
     ttlSeconds: number,
@@ -93,9 +90,11 @@ export class CacheService {
       );
 
       return marked;
-
     } catch (error) {
-      console.error('[Cache] Atomic marker failed:', error);
+      console.error(
+        '[Cache ERROR] Atomic marker failed:',
+        errorMessage(error),
+      );
       return null;
     }
   }
@@ -103,8 +102,12 @@ export class CacheService {
   async invalidate(key: string): Promise<void> {
     try {
       await redisRepository.delete(key);
+      console.info(`[Cache INVALIDATE] ${safeCacheKey(key)}`);
     } catch (error) {
-      console.error('[Cache] Invalidation failed:', error);
+      console.error(
+        '[Cache ERROR] Invalidation failed:',
+        errorMessage(error),
+      );
     }
   }
 
@@ -113,16 +116,24 @@ export class CacheService {
 
     try {
       await redisRepository.deleteMany(keys);
+      console.info(`[Cache INVALIDATE] ${keys.length} keys`);
     } catch (error) {
-      console.error('[Cache] Multi-key invalidation failed:', error);
+      console.error(
+        '[Cache ERROR] Multi-key invalidation failed:',
+        errorMessage(error),
+      );
     }
   }
 
   async invalidatePattern(pattern: string): Promise<void> {
     try {
       await redisRepository.deleteByPattern(pattern);
+      console.info(`[Cache INVALIDATE PATTERN] ${pattern}`);
     } catch (error) {
-      console.error('[Cache] Pattern invalidation failed:', error);
+      console.error(
+        '[Cache ERROR] Pattern invalidation failed:',
+        errorMessage(error),
+      );
     }
   }
 }

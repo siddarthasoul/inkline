@@ -48,7 +48,7 @@ export class UserRepository {
     logDb('updateById');
 
     return User.findByIdAndUpdate(id, updates, {
-      new: true,
+      returnDocument: 'after',
       runValidators: true,
     }).exec();
   }

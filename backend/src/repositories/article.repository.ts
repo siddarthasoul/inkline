@@ -137,7 +137,7 @@ export class ArticleRepository {
       },
       { $inc: { views: 1 } },
       {
-        new: true,
+        returnDocument: 'after',
         runValidators: true,
       },
     ).exec();
@@ -147,7 +147,7 @@ export class ArticleRepository {
     logDb('updateById');
 
     return Article.findByIdAndUpdate(id, updates, {
-      new: true,
+      returnDocument: 'after',
       runValidators: true,
     }).exec();
   }
