@@ -11,8 +11,14 @@ function isDuplicateKeyError(error: unknown): boolean {
   );
 }
 
+function logDb(operation: string): void {
+  console.info(`[MongoDB] ArticleLike.${operation}`);
+}
+
 export class ArticleLikeRepository {
   async countByArticle(articleId: Types.ObjectId): Promise<number> {
+    logDb('countByArticle');
+
     return ArticleLike.countDocuments({ article: articleId }).exec();
   }
 
@@ -20,6 +26,8 @@ export class ArticleLikeRepository {
     articleId: Types.ObjectId,
     visitor: string,
   ): Promise<boolean> {
+    logDb('hasLiked');
+
     const like = await ArticleLike.exists({
       article: articleId,
       visitor,
@@ -36,6 +44,8 @@ export class ArticleLikeRepository {
     articleId: Types.ObjectId,
     visitor: string,
   ): Promise<boolean> {
+    logDb('like');
+
     try {
       const result = await ArticleLike.updateOne(
         { article: articleId, visitor },
@@ -48,13 +58,23 @@ export class ArticleLikeRepository {
         { upsert: true },
       ).exec();
 
-      return result.upsertedCount > 0;
+      const inserted = result.upsertedCount > 0;
+
+      console.info(
+        inserted
+          ? '[MongoDB] ArticleLike.like inserted'
+          : '[MongoDB] ArticleLike.like already exists',
+      );
+
+      return inserted;
     } catch (error) {
-      // Another concurrent request may have inserted the same unique like.
+      // Concurrent requests can race against the unique compound index.
       if (isDuplicateKeyError(error)) {
+        console.info('[MongoDB] ArticleLike.like duplicate prevented');
         return false;
       }
 
+      console.error('[MongoDB ERROR] ArticleLike.like failed');
       throw error;
     }
   }
@@ -66,10 +86,18 @@ export class ArticleLikeRepository {
     articleId: Types.ObjectId,
     visitor: string,
   ): Promise<boolean> {
+    logDb('unlike');
+
     const result = await ArticleLike.deleteOne({
       article: articleId,
       visitor,
     }).exec();
+
+    console.info(
+      result.deletedCount > 0
+        ? '[MongoDB] ArticleLike.unlike deleted'
+        : '[MongoDB] ArticleLike.unlike nothing to delete',
+    );
 
     return result.deletedCount > 0;
   }
@@ -80,6 +108,8 @@ export class ArticleLikeRepository {
     if (articleIds.length === 0) {
       return new Map<string, number>();
     }
+
+    logDb('countByArticles');
 
     const counts = await ArticleLike.aggregate<{
       _id: Types.ObjectId;

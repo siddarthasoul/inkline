@@ -10,14 +10,30 @@ export const CacheTTL = {
 } as const;
 
 export class CacheService {
+
   async get<T>(key: string): Promise<T | null> {
     try {
-      return await redisRepository.get<T>(key);
+      const value = await redisRepository.get<T>(key);
+
+      // Avoid exposing visitor identifiers in logs.
+      const label = key.startsWith('article:likes:state:')
+        ? 'article:likes:state:<redacted>'
+        : key;
+
+      console.info(
+        value === null
+          ? `[Cache MISS] ${label}`
+          : `[Cache HIT] ${label}`,
+      );
+
+      return value;
     } catch (error) {
-      console.error('[Cache] Read failed:', error);
+      console.error('[Cache ERROR] Read failed:', error);
       return null;
     }
   }
+
+
 
   async set<T>(
     key: string,
@@ -26,11 +42,12 @@ export class CacheService {
   ): Promise<void> {
     try {
       await redisRepository.set(key, value, ttlSeconds);
+      console.info(`[Cache SET] ${key} TTL=${ttlSeconds}s`);
     } catch (error) {
-      // Cache failures must not fail a successful database operation.
-      console.error('[Cache] Write failed:', error);
+      console.error('[Cache ERROR] Write failed:', error);
     }
   }
+
 
   async remember<T>(
     key: string,
@@ -63,11 +80,20 @@ export class CacheService {
     ttlSeconds: number,
   ): Promise<boolean | null> {
     try {
-      return await redisRepository.setIfNotExists(
+      const marked = await redisRepository.setIfNotExists(
         key,
         '1',
         ttlSeconds,
       );
+
+      console.info(
+        marked
+          ? '[Cache MARK] New marker created'
+          : '[Cache MARK] Marker already exists',
+      );
+
+      return marked;
+
     } catch (error) {
       console.error('[Cache] Atomic marker failed:', error);
       return null;

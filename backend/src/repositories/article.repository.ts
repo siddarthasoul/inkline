@@ -1,4 +1,3 @@
-
 import { Article, type ArticleStatus } from '../models/Article.js';
 import type { Types } from 'mongoose';
 
@@ -27,27 +26,36 @@ export interface ListArticlesOptions {
   author?: Types.ObjectId;
 }
 
+function logDb(operation: string): void {
+  console.info(`[MongoDB] Article.${operation}`);
+}
+
 export class ArticleRepository {
   async create(data: CreateArticleInput) {
+    logDb('create');
+
     return Article.create({
       ...data,
       status: data.status ?? 'draft',
-      publishedAt:
-        data.status === 'published' ? new Date() : null,
+      publishedAt: data.status === 'published' ? new Date() : null,
     });
   }
 
   async findById(id: string) {
+    logDb('findById');
     return Article.findById(id).exec();
   }
 
   async findBySlug(slug: string) {
+    logDb('findBySlug');
     return Article.findOne({
       slug: slug.trim().toLowerCase(),
     }).exec();
   }
 
   async findPublishedBySlug(slug: string) {
+    logDb('findPublishedBySlug');
+
     return Article.findOne({
       slug: slug.trim().toLowerCase(),
       status: 'published',
@@ -56,12 +64,11 @@ export class ArticleRepository {
 
   async listPublished(options: ListArticlesOptions = {}) {
     const page = Math.max(1, Math.floor(options.page ?? 1));
-    const limit = Math.min(
-      50,
-      Math.max(1, Math.floor(options.limit ?? 10)),
-    );
-
+    const limit = Math.min(50, Math.max(1, Math.floor(options.limit ?? 10)));
     const filter = { status: 'published' as const };
+
+    logDb('listPublished.find');
+    logDb('listPublished.count');
 
     const [items, total] = await Promise.all([
       Article.find(filter)
@@ -86,10 +93,7 @@ export class ArticleRepository {
 
   async listForOwner(options: ListArticlesOptions = {}) {
     const page = Math.max(1, Math.floor(options.page ?? 1));
-    const limit = Math.min(
-      50,
-      Math.max(1, Math.floor(options.limit ?? 10)),
-    );
+    const limit = Math.min(50, Math.max(1, Math.floor(options.limit ?? 10)));
 
     const filter: {
       status?: ArticleStatus;
@@ -98,6 +102,9 @@ export class ArticleRepository {
 
     if (options.status) filter.status = options.status;
     if (options.author) filter.author = options.author;
+
+    logDb('listForOwner.find');
+    logDb('listForOwner.count');
 
     const [items, total] = await Promise.all([
       Article.find(filter)
@@ -121,14 +128,14 @@ export class ArticleRepository {
   }
 
   async incrementPublishedViewBySlug(slug: string) {
+    logDb('incrementPublishedViewBySlug');
+
     return Article.findOneAndUpdate(
       {
         slug: slug.trim().toLowerCase(),
         status: 'published',
       },
-      {
-        $inc: { views: 1 },
-      },
+      { $inc: { views: 1 } },
       {
         new: true,
         runValidators: true,
@@ -137,6 +144,8 @@ export class ArticleRepository {
   }
 
   async updateById(id: string, updates: UpdateArticleInput) {
+    logDb('updateById');
+
     return Article.findByIdAndUpdate(id, updates, {
       new: true,
       runValidators: true,
@@ -144,6 +153,8 @@ export class ArticleRepository {
   }
 
   async deleteById(id: string): Promise<boolean> {
+    logDb('deleteById');
+
     const result = await Article.deleteOne({ _id: id }).exec();
     return result.deletedCount === 1;
   }
@@ -152,6 +163,8 @@ export class ArticleRepository {
     slug: string,
     excludeId?: string,
   ): Promise<boolean> {
+    logDb('existsBySlug');
+
     const filter: Record<string, unknown> = {
       slug: slug.trim().toLowerCase(),
     };

@@ -2,8 +2,14 @@
 import { User, type IUser } from '../models/User.js';
 import type { UpdateQuery } from 'mongoose';
 
+function logDb(operation: string): void {
+  console.info(`[MongoDB] User.${operation}`);
+}
+
 export class UserRepository {
   async create(data: Pick<IUser, 'email' | 'passwordHash'>) {
+    logDb('create');
+
     return User.create({
       ...data,
       role: 'owner',
@@ -11,10 +17,13 @@ export class UserRepository {
   }
 
   async findById(id: string) {
+    logDb('findById');
     return User.findById(id).exec();
   }
 
   async findByEmail(email: string) {
+    logDb('findByEmail');
+
     return User.findOne({
       email: email.trim().toLowerCase(),
     })
@@ -23,6 +32,8 @@ export class UserRepository {
   }
 
   async existsByEmail(email: string): Promise<boolean> {
+    logDb('existsByEmail');
+
     const user = await User.exists({
       email: email.trim().toLowerCase(),
     });
@@ -34,6 +45,8 @@ export class UserRepository {
     id: string,
     updates: UpdateQuery<IUser>,
   ) {
+    logDb('updateById');
+
     return User.findByIdAndUpdate(id, updates, {
       new: true,
       runValidators: true,
@@ -41,6 +54,8 @@ export class UserRepository {
   }
 
   async deleteById(id: string): Promise<boolean> {
+    logDb('deleteById');
+
     const result = await User.deleteOne({ _id: id }).exec();
     return result.deletedCount === 1;
   }
